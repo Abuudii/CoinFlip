@@ -5,8 +5,8 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Exchange from "./pages/Exchange";
-import ForgotPassword from "./pages/ForgotPassword";   // 👈 Passwort-vergessen Seite
-import ResetPassword from "./pages/ResetPassword";     // 👈 Neues Passwort setzen
+import ForgotPassword from "./pages/ForgotPassword";   //Passwort-vergessen Seite
+import ResetPassword from "./pages/ResetPassword";     //Neues Passwort setzen
 import ProtectedRoute from "./components/ProtectedRoute";
 import "./App.css";
 

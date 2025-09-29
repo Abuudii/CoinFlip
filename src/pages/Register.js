@@ -19,6 +19,7 @@ export default function Register() {
     const [username, setUsername] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [showPw, setShowPw] = useState(false);
     const [loading, setLoading] = useState(false);
     const [toast, setToast] = useState(null);
 
@@ -46,34 +47,69 @@ export default function Register() {
 
     return (
         <main className="container">
-            <form className="auth" onSubmit={onSubmit} noValidate>
-                <h2>Registrieren</h2>
-                <div className="sub">Erstelle deinen sicheren Account</div>
+            <form className="auth auth-neon" onSubmit={onSubmit} noValidate>
+                <h2 className="auth-title">Registrieren</h2>
+                <p className="auth-sub">Erstelle deinen sicheren Account</p>
 
                 <div className="field">
                     <label className="label" htmlFor="username">Benutzername</label>
-                    <input id="username" className="input" value={username} onChange={e => setUsername(e.target.value)} required />
+                    <input
+                        id="username"
+                        className="input input-neon"
+                        value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        required
+                    />
                     <div className="helper">min. 3 Zeichen</div>
                 </div>
 
                 <div className="field">
                     <label className="label" htmlFor="email">E-Mail</label>
-                    <input id="email" className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} required aria-invalid={!emailValid} />
+                    <input
+                        id="email"
+                        className="input input-neon"
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        required
+                        aria-invalid={!emailValid}
+                    />
                     {!emailValid && email && <div className="helper" style={{ color: "var(--danger)" }}>Bitte gültige E-Mail angeben</div>}
                 </div>
 
                 <div className="field">
                     <label className="label" htmlFor="password">Passwort</label>
-                    <input id="password" className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-                    <div className="meter" aria-hidden="true"><i style={{ width: `${strength}%` }} /></div>
+                    <div className="input-group input-group-neon">
+                        <input
+                            id="password"
+                            className="input input-neon"
+                            type={showPw ? "text" : "password"}
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            required
+                        />
+                        <button
+                            type="button"
+                            className="btn btn-icon btn-toggle"
+                            onClick={() => setShowPw(s => !s)}
+                            aria-label={showPw ? "Passwort ausblenden" : "Passwort anzeigen"}
+                        >
+                            <span className="toggle-icon">{showPw ? "👁️‍🗨️" : "👁️"}</span>
+                        </button>
+                    </div>
+                    <div className="meter meter-neon" aria-hidden="true"><i style={{ width: `${strength}%` }} /></div>
                     <div className="helper">Mind. 8 Zeichen, ideal: Groß/Klein, Zahl, Sonderzeichen.</div>
                 </div>
 
-                <div className="row" style={{ marginTop: 12 }}>
-                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                <div className="row row-neon row-buttons">
+                    <button
+                        className="btn btn-gradient"
+                        type="submit"
+                        disabled={loading}
+                    >
                         {loading ? "Wird angelegt…" : "Konto erstellen"}
                     </button>
-                    <a className="btn btn-ghost" href="/login">Ich habe bereits ein Konto</a>
+                    <a className="btn btn-outlined" href="/login">Ich habe bereits ein Konto</a>
                 </div>
             </form>
 

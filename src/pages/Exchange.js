@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import "../App.css";
 import { getToken } from "../utils/auth";
+import CurrencyGraph from "../components/CurrencyGraph";
 
 export default function Exchange() {
     const [rates, setRates] = useState({});
@@ -28,6 +29,9 @@ export default function Exchange() {
 
     const authed = !!getToken();
 
+    // Add historical graph
+    const showGraph = amount > 0 && from && to;
+
     return (
         <main className="container">
             <div className="exchange">
@@ -51,6 +55,12 @@ export default function Exchange() {
                 </div>
 
                 <div className="rate">{out && `1 ${from} = ${(rates[to] / rates[from]).toFixed(4)} ${to}`}</div>
+
+                {showGraph && (
+                    <div className="graph-container">
+                        <CurrencyGraph fromCurrency={from} toCurrency={to} />
+                    </div>
+                )}
             </div>
         </main>
     );
