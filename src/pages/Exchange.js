@@ -32,32 +32,43 @@ export default function Exchange() {
     // Add historical graph
     const showGraph = amount > 0 && from && to;
 
+    console.log('Render conditions:', { amount, from, to, showGraph }); // Debug logging
+
+    const handleSwap = () => {
+        setFrom(to);
+        setTo(from);
+    };
+
     return (
         <main className="container">
-            <div className="exchange">
-                <h2>Currency Exchange</h2>
-                {!authed && <p className="helper">Du bist nicht eingeloggt – einige Funktionen sind deaktiviert.</p>}
+            <div className="exchange-graph-layout">
+                <div className="exchange-box">
+                    <h2>Currency Exchange</h2>
+                    {!authed && <p className="helper">Du bist nicht eingeloggt – einige Funktionen sind deaktiviert.</p>}
 
-                <div className="row-flex">
-                    <label className="label" htmlFor="from">From</label>
-                    <select id="from" className="input" value={from} onChange={e => setFrom(e.target.value)}>
-                        {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <input className="input" type="number" min="0" value={amount} onChange={e => setAmount(+e.target.value || 0)} />
+                    <div className="row-flex">
+                        <label className="label" htmlFor="from">From</label>
+                        <select id="from" className="input" value={from} onChange={e => setFrom(e.target.value)}>
+                            {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <input className="input" type="number" min="0" value={amount} onChange={e => setAmount(+e.target.value || 0)} />
+                    </div>
+
+                    <div className="row-flex">
+                        <label className="label" htmlFor="to">To</label>
+                        <select id="to" className="input" value={to} onChange={e => setTo(e.target.value)}>
+                            {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <input className="input" disabled value={out} />
+                    </div>
+
+                    <div className="rate">{out && `1 ${from} = ${(rates[to] / rates[from]).toFixed(4)} ${to}`}</div>
+                    <button className="btn btn-gradient btn-toggle" style={{ marginTop: '1rem' }} onClick={handleSwap}>
+                        Swap {from} ↔ {to}
+                    </button>
                 </div>
-
-                <div className="row-flex">
-                    <label className="label" htmlFor="to">To</label>
-                    <select id="to" className="input" value={to} onChange={e => setTo(e.target.value)}>
-                        {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <input className="input" disabled value={out} />
-                </div>
-
-                <div className="rate">{out && `1 ${from} = ${(rates[to] / rates[from]).toFixed(4)} ${to}`}</div>
-
                 {showGraph && (
-                    <div className="graph-container">
+                    <div className="graph-box">
                         <CurrencyGraph fromCurrency={from} toCurrency={to} />
                     </div>
                 )}
