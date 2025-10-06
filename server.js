@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const nodemailer = require("nodemailer");
+const fetch = require('node-fetch');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -219,5 +220,184 @@ app.post("/api/reset-password", async (req, res) => {
 });
 
 
+
+// --------------------
+// 📌 Currency Exchange Proxy (um CORS-Probleme zu vermeiden)
+app.get("/api/exchange/:from/:to/:amount", async (req, res) => {
+    const { from, to, amount } = req.params;
+
+    try {
+        // Try multiple APIs
+        const apis = [
+            // API 1: ExchangeRate-API
+            async () => {
+                const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${from}`);
+                const data = await response.json();
+                if (data.rates && data.rates[to]) {
+                    const rate = data.rates[to];
+                    const result = parseFloat(amount) * rate;
+                    return {
+                        success: true,
+                        result: result,
+                        rate: rate,
+                        from: from,
+                        to: to,
+                        amount: parseFloat(amount)
+                    };
+                }
+                return null;
+            },
+            // API 2: Open Exchange Rates
+            async () => {
+                const response = await fetch(`https://open.er-api.com/v6/latest/${from}`);
+                const data = await response.json();
+                if (data.rates && data.rates[to]) {
+                    const rate = data.rates[to];
+                    const result = parseFloat(amount) * rate;
+                    return {
+                        success: true,
+                        result: result,
+                        rate: rate,
+                        from: from,
+                        to: to,
+                        amount: parseFloat(amount)
+                    };
+                }
+                return null;
+            },
+            // API 3: Currency API via CDN
+            async () => {
+                const response = await fetch(`https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/${from.toLowerCase()}/${to.toLowerCase()}.json`);
+                const data = await response.json();
+                if (data && data[to.toLowerCase()]) {
+                    const rate = data[to.toLowerCase()];
+                    const result = parseFloat(amount) * rate;
+                    return {
+                        success: true,
+                        result: result,
+                        rate: rate,
+                        from: from,
+                        to: to,
+                        amount: parseFloat(amount)
+                    };
+                }
+                return null;
+            }
+        ];
+
+        // Try each API
+        for (let i = 0; i < apis.length; i++) {
+            try {
+                console.log(`Trying exchange API ${i + 1} for ${from} -> ${to}`);
+                const result = await apis[i]();
+                if (result) {
+                    console.log(`Exchange API ${i + 1} successful`);
+                    return res.json(result);
+                }
+            } catch (error) {
+                console.warn(`Exchange API ${i + 1} failed:`, error.message);
+                continue;
+            }
+        }
+
+        // If all APIs fail
+        res.status(500).json({
+            success: false,
+            error: "Alle Wechselkurs-APIs sind nicht verfügbar"
+        });
+
+    } catch (error) {
+        console.error("Exchange error:", error);
+        res.status(500).json({
+            success: false,
+            error: "Server-Fehler bei der Währungsumrechnung"
+        });
+    }
+});
+
+// 📌 Crypto Exchange Proxy
+app.get("/api/crypto/:from/:to/:amount", async (req, res) => {
+    const { from, to, amount } = req.params;
+
+    try {
+        const cryptoMapping = {
+            'BTC': 'bitcoin', 'ETH': 'ethereum', 'USDT': 'tether', 'BNB': 'binancecoin',
+            'SOL': 'solana', 'USDC': 'usd-coin', 'XRP': 'ripple', 'STETH': 'staked-ether',
+            'TON': 'the-open-network', 'DOGE': 'dogecoin', 'ADA': 'cardano', 'TRX': 'tron',
+            'AVAX': 'avalanche-2', 'SHIB': 'shiba-inu', 'WBTC': 'wrapped-bitcoin',
+            'LINK': 'chainlink', 'BCH': 'bitcoin-cash', 'DOT': 'polkadot', 'NEAR': 'near',
+            'MATIC': 'matic-network', 'LTC': 'litecoin', 'UNI': 'uniswap', 'ICP': 'internet-computer',
+            'LEO': 'leo-token', 'DAI': 'dai', 'ETC': 'ethereum-classic', 'APT': 'aptos',
+            'CRO': 'crypto-com-chain', 'XLM': 'stellar', 'OKB': 'okb', 'ATOM': 'cosmos',
+            'MNT': 'mantle', 'XMR': 'monero', 'HBAR': 'hedera-hashgraph', 'FIL': 'filecoin',
+            'TAO': 'bittensor', 'IMX': 'immutable-x', 'VET': 'vechain', 'ARB': 'arbitrum',
+            'OP': 'optimism'
+        };
+
+        // Get crypto ID for CoinGecko
+        const fromId = cryptoMapping[from.toUpperCase()] || from.toLowerCase();
+        const toId = cryptoMapping[to.toUpperCase()] || to.toLowerCase();
+
+        if (fromId && toId) {
+            // Crypto to crypto
+            const [fromResponse, toResponse] = await Promise.all([
+                fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${fromId}&vs_currencies=usd`),
+                fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${toId}&vs_currencies=usd`)
+            ]);
+
+            const [fromData, toData] = await Promise.all([fromResponse.json(), toResponse.json()]);
+            const fromPrice = fromData[fromId]?.usd;
+            const toPrice = toData[toId]?.usd;
+
+            if (fromPrice && toPrice) {
+                const rate = fromPrice / toPrice;
+                const result = parseFloat(amount) * rate;
+                return res.json({
+                    success: true,
+                    result: result,
+                    rate: rate,
+                    from: from,
+                    to: to,
+                    amount: parseFloat(amount)
+                });
+            }
+        } else {
+            // Crypto to fiat or fiat to crypto
+            const cryptoId = cryptoMapping[from.toUpperCase()] || cryptoMapping[to.toUpperCase()];
+            const fiatCurrency = cryptoMapping[from.toUpperCase()] ? to.toLowerCase() : from.toLowerCase();
+
+            if (cryptoId) {
+                const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cryptoId}&vs_currencies=${fiatCurrency}`);
+                const data = await response.json();
+                const rate = data[cryptoId]?.[fiatCurrency];
+
+                if (rate) {
+                    const finalRate = cryptoMapping[from.toUpperCase()] ? rate : 1 / rate;
+                    const result = parseFloat(amount) * finalRate;
+                    return res.json({
+                        success: true,
+                        result: result,
+                        rate: finalRate,
+                        from: from,
+                        to: to,
+                        amount: parseFloat(amount)
+                    });
+                }
+            }
+        }
+
+        res.status(500).json({
+            success: false,
+            error: "Crypto-Konvertierung fehlgeschlagen"
+        });
+
+    } catch (error) {
+        console.error("Crypto exchange error:", error);
+        res.status(500).json({
+            success: false,
+            error: "Server-Fehler bei der Crypto-Umrechnung"
+        });
+    }
+});
 
 app.listen(PORT, () => console.log(`🚀 Server läuft auf http://10.110.49.48:${PORT}`));

@@ -61,32 +61,36 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
                     dates.push(date.toISOString().split('T')[0]);
                 }
 
-                const API_KEY = "8d1ef50b6a349477a48216738ea8eb57";
+                const API_KEY = "TGM2s8IYNKsAOxWphZd4yC5VUkd8zXzN";
                 const ratesData = [];
 
-                // Fetch each date individually to work with free tier
+                // Fetch historical data for each date
                 for (const date of dates) {
-                    const response = await fetch(
-                        `https://api.exchangeratesapi.io/v1/${date}?` +
-                        `access_key=${API_KEY}` +
-                        `&base=EUR` + // API requires EUR as base in free tier
-                        `&symbols=${fromCurrency},${toCurrency}`
-                    );
+                    try {
+                        const response = await fetch(
+                            `https://api.apilayer.com/exchangerates_data/${date}?symbols=${fromCurrency},${toCurrency}&base=${fromCurrency}`,
+                            {
+                                headers: {
+                                    "apikey": API_KEY
+                                }
+                            }
+                        );
 
-                    const data = await response.json();
+                        const data = await response.json();
 
-                    if (data.success && data.rates) {
-                        const fromRate = data.rates[fromCurrency] || 1;
-                        const toRate = data.rates[toCurrency] || 1;
-
-                        ratesData.push({
-                            date: new Date(date).toLocaleDateString(),
-                            rate: toRate / fromRate
-                        });
+                        if (data.success && data.rates) {
+                            const rate = data.rates[toCurrency] || 1;
+                            ratesData.push({
+                                date: new Date(date).toLocaleDateString(),
+                                rate: rate
+                            });
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to fetch data for ${date}:`, error);
                     }
 
                     // Add a small delay to avoid rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await new Promise(resolve => setTimeout(resolve, 200));
                 }
 
                 if (ratesData.length === 0) {
