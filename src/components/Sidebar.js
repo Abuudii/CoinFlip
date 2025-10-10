@@ -33,6 +33,11 @@ export default function Sidebar() {
                 <NavLink to="/exchange/graph" className="sidebar-link">
                     📊 Graphen
                 </NavLink>
+                {user?.role === 'admin' && (
+                    <NavLink to="/admin" className="sidebar-link">
+                        👑 Admin Panel
+                    </NavLink>
+                )}
             </nav>
 
             <div className="sidebar-footer">

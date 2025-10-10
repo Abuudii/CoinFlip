@@ -51,6 +51,15 @@ export default function Header() {
                     {!authed && <Link to="/register" className="nav-link btn-gradient" onClick={closeMenu}>Registrieren</Link>}
                     {authed && <span className="nav-link badge">Angemeldet</span>}
                     {authed && <button className="nav-link btn-danger" onClick={() => { clearToken(); nav("/login"); closeMenu(); }}>Abmelden</button>}
+                    {/* Admin link for mobile menu */}
+                    {authed && (() => {
+                        try {
+                            const token = getToken();
+                            const payload = token ? JSON.parse(atob(token.split('.')[1])) : null;
+                            if (payload && payload.role === 'admin') return <Link to="/admin" className="nav-link" onClick={closeMenu}>Admin</Link>;
+                        } catch (e) { }
+                        return null;
+                    })()}
                 </nav>
             </div>
         </header>

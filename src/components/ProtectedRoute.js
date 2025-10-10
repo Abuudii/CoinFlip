@@ -1,9 +1,16 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
-import { getToken, isExpired } from "../utils/auth";
+import { getToken, isExpired, decodeJwt } from "../utils/auth";
 
-export default function ProtectedRoute({ children }) {
+// role (optional) - if provided, user must have that role (e.g. 'admin')
+export default function ProtectedRoute({ children, role }) {
     const token = getToken();
     if (!token || isExpired(token)) return <Navigate to="/login" replace />;
+
+    if (role) {
+        const payload = decodeJwt(token);
+        if (!payload || payload.role !== role) return <Navigate to="/" replace />;
+    }
+
     return children;
 }

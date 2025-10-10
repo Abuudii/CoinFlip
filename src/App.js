@@ -12,6 +12,7 @@ import ExchangeLayout from "./pages/ExchangeLayout";   // Layout für alle Excha
 import FiatExchange from "./pages/FiatExchange";
 import CryptoExchange from "./pages/CryptoExchange";
 import GraphPage from "./pages/GraphPage";
+import AdminPanel from "./pages/AdminPanel";
 import { getToken } from "./utils/auth";
 import "./App.css";
 
@@ -49,6 +50,16 @@ export default function App() {
               <Route path="crypto" element={<CryptoExchange />} />
               <Route path="graph" element={<GraphPage />} />
             </Route>
+
+            {/* Admin Panel (admin only) */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute role="admin">
+                  <AdminPanel />
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </div>
       </div>

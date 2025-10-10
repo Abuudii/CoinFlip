@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import "../App.css";
 import { getToken } from "../utils/auth";
 import CurrencyGraph from "../components/CurrencyGraph";
+import { API_URL } from "../utils/config";
 
 export default function FiatExchange() {
     const [currencies, setCurrencies] = useState([]);
@@ -34,7 +35,7 @@ export default function FiatExchange() {
         setError("");
         try {
             const res = await fetch(
-                `http://localhost:5000/api/exchange?from=${from}&to=${to}&amount=${amount}`
+                `${API_URL}/exchange?from=${from}&to=${to}&amount=${amount}`
             );
             const data = await res.json();
 
