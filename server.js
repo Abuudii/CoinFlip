@@ -2,13 +2,12 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql2/promise");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
 
 // ✅ Verbindung zur MySQL-Datenbank (aus .env)
 const db = mysql.createPool({
@@ -148,7 +147,7 @@ app.post("/api/register", async (req, res) => {
 
         const hash = await bcrypt.hash(password, 10);
         const [result] = await db.query(
-            "INSERT INTO users (username, email, password, role, created_at) VALUES (?, ?, ?, ?, NOW())",
+            "INSERT INTO users (username, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, NOW())",
             [username, email, hash, 'user']
         );
 
@@ -170,11 +169,14 @@ app.post("/api/login", async (req, res) => {
         const { identifier, password } = req.body || {};
         if (!identifier || !password) return res.status(400).json({ error: "Missing fields" });
 
-        const [rows] = await db.query("SELECT id, username, email, password, role FROM users WHERE username=? OR email=? LIMIT 1", [identifier, identifier]);
+        const [rows] = await db.query(
+            "SELECT id, username, email, password_hash, role FROM users WHERE username=? OR email=? LIMIT 1",
+            [identifier, identifier]
+        );
         if (rows.length === 0) return res.status(401).json({ error: "Invalid credentials" });
 
         const user = rows[0];
-        const match = await bcrypt.compare(password, user.password);
+        const match = await bcrypt.compare(password, user.password_hash);
         if (!match) return res.status(401).json({ error: "Invalid credentials" });
 
         const secret = process.env.JWT_SECRET || "devsecret";
@@ -186,9 +188,9 @@ app.post("/api/login", async (req, res) => {
     }
 });
 
-// Protected user management routes will be defined below using the promise pool
-
-// JWT middleware - verifies token and attaches payload to req.user
+// -----------------------------
+// Auth Middleware & Admin routes
+// -----------------------------
 function authenticateJWT(req, res, next) {
     const auth = req.headers.authorization || "";
     if (!auth.startsWith("Bearer ")) return res.status(401).json({ error: "Missing token" });
@@ -203,7 +205,6 @@ function authenticateJWT(req, res, next) {
     }
 }
 
-// admin-only middleware
 function requireAdmin(req, res, next) {
     if (!req.user || req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
     next();
@@ -241,6 +242,65 @@ app.put("/api/users/:id", authenticateJWT, requireAdmin, async (req, res) => {
     }
 });
 
+// Middleware (falls noch nicht vorhanden)
+function authenticateJWT(req, res, next) {
+    const auth = req.headers.authorization || "";
+    if (!auth.startsWith("Bearer ")) return res.status(401).json({ error: "Missing token" });
+    const token = auth.split(" ")[1];
+    try {
+        const secret = process.env.JWT_SECRET || "devsecret";
+        const payload = jwt.verify(token, secret);
+        req.user = payload;
+        next();
+    } catch (err) {
+        res.status(401).json({ error: "Invalid token" });
+    }
+}
 
+function requireAdmin(req, res, next) {
+    if (!req.user || req.user.role !== "admin") return res.status(403).json({ error: "Admin only" });
+    next();
+}
+
+// 🔹 Alle Benutzer abrufen
+app.get("/api/users", authenticateJWT, requireAdmin, async (req, res) => {
+    try {
+        const [rows] = await db.query("SELECT id, username, email, role FROM users");
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 🔹 Benutzer löschen
+app.delete("/api/users/:id", authenticateJWT, requireAdmin, async (req, res) => {
+    try {
+        await db.query("DELETE FROM users WHERE id = ?", [req.params.id]);
+        res.json({ message: "User deleted" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 🔹 Benutzer bearbeiten (Rolle, Name, E-Mail)
+app.put("/api/users/:id", authenticateJWT, requireAdmin, async (req, res) => {
+    const { username, email, role } = req.body;
+    try {
+        await db.query(
+            "UPDATE users SET username=?, email=?, role=? WHERE id=?",
+            [username, email, role, req.params.id]
+        );
+        res.json({ message: "User updated" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+//Server starten 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server läuft auf Port ${PORT}`));
+const HOST = "0.0.0.0"; // erlaubt Zugriff über LAN-IP
+
+app.listen(PORT, HOST, () => {
+    console.log(`🚀 Server läuft auf http://${HOST}:${PORT}`);
+});
