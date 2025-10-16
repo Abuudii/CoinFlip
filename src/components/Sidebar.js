@@ -19,29 +19,32 @@ export default function Sidebar() {
     return (
         <aside className="sidebar">
             <div className="sidebar-header">
-                <h2 className="sidebar-logo">CoinFlipX</h2>
+                <h2 className="sidebar-logo">CoinFlip</h2>
                 <span className="sidebar-user">👋 Hallo, {username}</span>
             </div>
 
             <nav className="sidebar-nav">
                 <NavLink to="/exchange/fiat" className="sidebar-link">
-                    💱 Währung Exchange
+                    💱 <span>Fiat Exchange</span>
                 </NavLink>
+
                 <NavLink to="/exchange/crypto" className="sidebar-link">
-                    ₿ Crypto Exchange
+                    ₿ <span>Crypto Exchange</span>
                 </NavLink>
-                <NavLink to="/exchange/graph" className="sidebar-link">
-                    📊 Graphen
+
+                <NavLink to="/portfolio" className="sidebar-link">
+                    💼 <span>Portfolio</span>
                 </NavLink>
-                {user?.role === 'admin' && (
+
+                {user?.role === "admin" && (
                     <NavLink to="/admin" className="sidebar-link">
-                        👑 Admin Panel
+                        ⚙️ <span>Admin Panel</span>
                     </NavLink>
                 )}
             </nav>
 
             <div className="sidebar-footer">
-                <button onClick={logout} className="btn btn-danger">
+                <button onClick={logout} className="btn logout-btn">
                     Logout
                 </button>
             </div>

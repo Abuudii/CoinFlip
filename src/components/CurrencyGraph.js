@@ -32,7 +32,7 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
             try {
                 setLoading(true);
 
-                // For crypto currencies, use CoinGecko API
+                // ✅ Sonderfall für Krypto (CoinGecko bleibt gleich)
                 if (fromCurrency === 'BTC') {
                     const response = await fetch(
                         `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=${toCurrency.toLowerCase()}&days=30&interval=daily`
@@ -50,69 +50,49 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
                     }
                 }
 
-                // Calculate dates for API call
-                const now = new Date();
-                const dates = [];
+                // ✅ Für FIAT jetzt nur über deinen Server (kein direkter apilayer-Call)
+                const end = new Date().toISOString().split('T')[0];
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - 30);
+                const start = startDate.toISOString().split('T')[0];
 
-                // Generate array of dates for the last 30 days
-                for (let i = 0; i < 30; i++) {
-                    const date = new Date(now);
-                    date.setDate(now.getDate() - i);
-                    dates.push(date.toISOString().split('T')[0]);
+                const response = await fetch(
+                    `http://localhost:5000/api/timeseries?base=${fromCurrency}&symbol=${toCurrency}&start=${start}&end=${end}`
+                );
+                const data = await response.json();
+
+                if (!data.success) throw new Error('Failed to fetch exchange rates');
+
+                let ratesData = [];
+
+                // Backend may return rows from DB (array) or the external API shape (object keyed by date)
+                if (Array.isArray(data.rates)) {
+                    // Rows from DB: [{ rate_date, rate_value }, ...]
+                    ratesData = data.rates.map(r => ({
+                        date: new Date(r.rate_date).toLocaleDateString(),
+                        rate: parseFloat(r.rate_value)
+                    }));
+                } else if (data.rates && typeof data.rates === 'object') {
+                    // External API shape: { '2023-10-01': { USD: 1.12 } }
+                    ratesData = Object.entries(data.rates).map(([date, val]) => ({
+                        date: new Date(date).toLocaleDateString(),
+                        rate: parseFloat(val && val[toCurrency])
+                    })).filter(d => !isNaN(d.rate));
                 }
 
-                const API_KEY = "TGM2s8IYNKsAOxWphZd4yC5VUkd8zXzN";
-                const ratesData = [];
+                if (ratesData.length === 0) throw new Error('No exchange rate data available');
 
-                // Fetch historical data for each date
-                for (const date of dates) {
-                    try {
-                        const response = await fetch(
-                            `https://api.apilayer.com/exchangerates_data/${date}?symbols=${fromCurrency},${toCurrency}&base=${fromCurrency}`,
-                            {
-                                headers: {
-                                    "apikey": API_KEY
-                                }
-                            }
-                        );
-
-                        const data = await response.json();
-
-                        if (data.success && data.rates) {
-                            const rate = data.rates[toCurrency] || 1;
-                            ratesData.push({
-                                date: new Date(date).toLocaleDateString(),
-                                rate: rate
-                            });
-                        }
-                    } catch (error) {
-                        console.warn(`Failed to fetch data for ${date}:`, error);
-                    }
-
-                    // Add a small delay to avoid rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                }
-
-                if (ratesData.length === 0) {
-                    throw new Error('Failed to fetch exchange rates');
-                }
-
-                // Sort data by date (oldest to newest)
+                // Sortieren (älteste → neueste)
                 const sortedData = ratesData.sort((a, b) => new Date(a.date) - new Date(b.date));
                 setHistoricalData({
                     labels: sortedData.map(d => d.date),
                     values: sortedData.map(d => d.rate)
                 });
-                console.log('Chart Data:', sortedData); // Debug logging
                 setLoading(false);
             } catch (error) {
                 console.error('Error fetching historical data:', error);
                 setLoading(false);
                 setHistoricalData(null);
-                // Show more detailed error in the UI
-                return <div style={{ color: 'var(--danger)', padding: '1rem', textAlign: 'center' }}>
-                    Failed to load exchange rate data. Please try again later.
-                </div>;
             }
         };
 
@@ -174,17 +154,9 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
         responsive: true,
         maintainAspectRatio: false,
         layout: {
-            padding: {
-                top: 10,
-                right: 15,
-                bottom: 0,
-                left: 15
-            }
+            padding: { top: 10, right: 15, bottom: 0, left: 15 }
         },
-        interaction: {
-            mode: 'index',
-            intersect: false,
-        },
+        interaction: { mode: 'index', intersect: false },
         plugins: {
             legend: {
                 display: true,
@@ -192,10 +164,7 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
                 align: 'start',
                 labels: {
                     color: '#fff',
-                    font: {
-                        size: 13,
-                        weight: 'bold'
-                    },
+                    font: { size: 13, weight: 'bold' },
                     padding: 15,
                     boxWidth: 15,
                     usePointStyle: true
@@ -204,12 +173,8 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
             tooltip: {
                 backgroundColor: 'rgba(0, 0, 0, 0.8)',
                 padding: 10,
-                titleFont: {
-                    size: 13
-                },
-                bodyFont: {
-                    size: 12
-                },
+                titleFont: { size: 13 },
+                bodyFont: { size: 12 },
                 displayColors: false
             }
         },
@@ -222,9 +187,7 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
                 },
                 ticks: {
                     color: "#fff",
-                    font: {
-                        size: 11
-                    },
+                    font: { size: 11 },
                     maxRotation: 0,
                     minRotation: 0,
                     maxTicksLimit: 15,
@@ -238,18 +201,14 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
                 },
                 ticks: {
                     color: "#fff",
-                    font: {
-                        size: 11
-                    },
-                    callback: function (value) {
-                        return value.toLocaleString()
-                    },
+                    font: { size: 11 },
+                    callback: value => value.toLocaleString(),
                     maxTicksLimit: 8,
                     padding: 5
                 },
                 beginAtZero: false
-            },
-        },
+            }
+        }
     };
 
     return (

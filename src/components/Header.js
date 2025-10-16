@@ -15,7 +15,7 @@ export default function Header() {
         <header className="header">
             <div className="header-inner">
                 <div className="brand">
-                    <span className="logo-text">CoinFlipX</span>
+                    <span className="logo-text">CoinFlip</span>
                 </div>
 
                 <nav className="nav desktop-nav">

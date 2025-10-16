@@ -2,13 +2,14 @@ import React, { useEffect, useState } from "react";
 import "../App.css";
 import { getToken } from "../utils/auth";
 import CurrencyGraph from "../components/CurrencyGraph";
+import CurrencySelect from "../components/CurrencySelect";
 import { API_URL } from "../utils/config";
 
 export default function FiatExchange() {
     const [currencies, setCurrencies] = useState([]);
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
-    const [amount, setAmount] = useState(1);
+    const [amount, setAmount] = useState("");
     const [out, setOut] = useState("");
     const [rate, setRate] = useState("");
     const [loading, setLoading] = useState(false);
@@ -22,31 +23,29 @@ export default function FiatExchange() {
             try {
                 const res = await fetch(`${API_URL}/exchange/currencies`);
                 const data = await res.json();
-
                 if (data.success && data.currencies.length > 0) {
                     setCurrencies(data.currencies);
                     setFrom(data.currencies[0]);
-                    setTo(data.currencies.length > 1 ? data.currencies[1] : data.currencies[0]);
+                    setTo(data.currencies[1] || data.currencies[0]);
                 } else {
                     setError("Keine Währungen in der Datenbank gefunden.");
-                    setCurrencies([]);
                 }
-            } catch (err) {
+            } catch {
                 setError("Fehler beim Laden der Währungen.");
-                setCurrencies([]);
             }
         };
-
         fetchCurrencies();
     }, []);
 
-    // 🔹 Umrechnen bei Änderungen
+    // 🔹 Umrechnung bei Änderungen
     useEffect(() => {
-        if (currencies.length > 0 && from && to && amount > 0) {
+        if (from && to && amount && parseFloat(amount) > 0 && from !== to) {
             fetchExchange();
+        } else if (parseFloat(amount) === 0) {
+            setOut(`0.00 ${to}`);
         }
         // eslint-disable-next-line
-    }, [from, to, amount, currencies]);
+    }, [from, to, amount]);
 
     const fetchExchange = async () => {
         try {
@@ -56,14 +55,10 @@ export default function FiatExchange() {
                 `${API_URL}/exchange?from=${from}&to=${to}&amount=${amount}`
             );
             const data = await res.json();
-
             if (!data.success) throw new Error(data.message || "Fehler bei Anfrage.");
-
             setOut(`${data.result.toFixed(2)} ${to}`);
             setRate(`1 ${from} = ${data.rate.toFixed(4)} ${to}`);
         } catch (err) {
-            setOut("Error");
-            setRate("");
             setError(err.message);
         } finally {
             setLoading(false);
@@ -76,75 +71,104 @@ export default function FiatExchange() {
         setTo(prev);
     };
 
+    const handleAmountChange = (e) => {
+        const val = e.target.value;
+        // Nur Zahlen und Dezimalzeichen erlauben
+        if (/^[0-9]*[.,]?[0-9]*$/.test(val)) {
+            setAmount(val.replace(",", ".")); // Komma → Punkt
+        }
+    };
+
+    const filteredToCurrencies = currencies.filter((c) => c !== from);
+
     return (
-        <div className="exchange-full">
-            <div className="conversion-panel">
-                <h2 className="exchange-title">💱 Fiat Exchange</h2>
+        <div className="exchange-container">
+            <div className="exchange-card business-card">
+                <h2 className="exchange-title-business">Fiat Exchange</h2>
+
                 {!authed && (
-                    <p className="helper">🔒 Login nötig für volle Funktionalität</p>
+                    <p className="auth-warning">🔒 Login nötig für volle Funktionalität</p>
                 )}
 
-                {currencies.length === 0 ? (
-                    <p className="helper">⚠️ Keine Währungen in der Datenbank gefunden.</p>
-                ) : (
-                    <>
-                        <div className="row-flex fancy-row">
-                            <label className="label">From</label>
-                            <select
-                                className="input neon-input"
-                                value={from}
-                                onChange={(e) => setFrom(e.target.value)}
-                            >
-                                {currencies.map((c) => (
-                                    <option key={c} value={c}>{c}</option>
-                                ))}
-                            </select>
-                            <input
-                                className="input neon-input"
-                                type="number"
-                                min="0"
-                                value={amount}
-                                onChange={(e) => setAmount(+e.target.value || 0)}
-                            />
+                {error && <div className="error-banner-business">{error}</div>}
+
+                {currencies.length > 0 && (
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            fetchExchange();
+                        }}
+                        className="exchange-form"
+                    >
+                        <div className="form-row">
+                            <div className="input-group-business">
+                                <CurrencySelect
+                                    label="Von"
+                                    value={from}
+                                    options={currencies}
+                                    onChange={(val) => {
+                                        if (val === to) setTo(currencies.find((c) => c !== val));
+                                        setFrom(val);
+                                    }}
+                                />
+                            </div>
+
+                            <div className="input-group-business">
+                                <label>Betrag</label>
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    min="0"
+                                    step="0.01"
+                                    value={amount}
+                                    placeholder="0.00"
+                                    onChange={handleAmountChange}
+                                    className="clean-input no-spinner"
+                                />
+                            </div>
                         </div>
 
-                        <div className="row-flex fancy-row">
-                            <label className="label">To</label>
-                            <select
-                                className="input neon-input"
-                                value={to}
-                                onChange={(e) => setTo(e.target.value)}
+                        <div className="swap-wrapper">
+                            <button
+                                type="button"
+                                onClick={handleSwap}
+                                className="swap-btn-business"
+                                title="Tauschen"
                             >
-                                {currencies.map((c) => (
-                                    <option key={c} value={c}>{c}</option>
-                                ))}
-                            </select>
-                            <input
-                                className="input neon-input"
-                                disabled
-                                value={loading ? "Loading..." : out}
-                            />
+                                ⇅
+                            </button>
                         </div>
 
-                        {rate && <div className="rate">{rate}</div>}
-                        {error && <div className="error">{error}</div>}
+                        <div className="form-row">
+                            <div className="input-group-business">
+                                <CurrencySelect
+                                    label="Nach"
+                                    value={to}
+                                    options={filteredToCurrencies}
+                                    onChange={(val) => setTo(val)}
+                                />
+                            </div>
 
-                        <button
-                            className="btn btn-gradient btn-toggle big-btn"
-                            onClick={handleSwap}
-                        >
-                            Swap {from} ↔ {to}
-                        </button>
-                    </>
+                            <div className="input-group-business">
+                                <label>Ergebnis</label>
+                                <input
+                                    disabled
+                                    value={loading ? "Berechne..." : out}
+                                    placeholder="—"
+                                    className="clean-input"
+                                />
+                            </div>
+                        </div>
+
+                        {rate && <div className="rate-display-business">{rate}</div>}
+                    </form>
                 )}
             </div>
 
             {currencies.length > 0 && (
-                <div className="graph-panel">
-                    <h2 className="exchange-title">📊 Kursverlauf</h2>
-                    <div className="graph-wrapper">
-                        <CurrencyGraph fromCurrency={from} toCurrency={to} />
-                    </div>
+                <div className="graph-card business-card">
+                    <h2 className="exchange-title-business">Kursverlauf</h2>
+                    <CurrencyGraph fromCurrency={from} toCurrency={to} />
                 </div>
             )}
         </div>
