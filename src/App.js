@@ -1,5 +1,5 @@
-import React from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 
 // 🔹 Komponenten
 import Header from "./components/Header";
@@ -18,35 +18,47 @@ import CryptoExchange from "./pages/CryptoExchange";
 import GraphPage from "./pages/GraphPage";
 import AdminPanel from "./pages/AdminPanel";
 import Portfolio from "./pages/Portfolio";
-import TransferFlow from "./pages/TransferFlow"; // ✅ neue Geld-senden-Seite
+import TransferFlow from "./pages/TransferFlow";
 
 // 🔹 Utils
-import { getToken } from "./utils/auth";
+import { getToken, clearToken } from "./utils/auth";
 import "./App.css";
 
-export default function App() {
-  const authed = !!getToken(); // prüft, ob der Nutzer eingeloggt ist
+function AppContent() {
+  const [authed, setAuthed] = useState(!!getToken());
+  const navigate = useNavigate();
+
+  // 🔁 Wenn sich Token ändert (z. B. durch Logout in anderem Tab)
+  useEffect(() => {
+    const onStorageChange = () => setAuthed(!!getToken());
+    window.addEventListener("storage", onStorageChange);
+    return () => window.removeEventListener("storage", onStorageChange);
+  }, []);
+
+  // 🔹 Logout-Funktion für Sidebar
+  const handleLogout = () => {
+    clearToken();
+    setAuthed(false);
+    navigate("/login");
+  };
 
   return (
-    <BrowserRouter>
-      {/* Header nur sichtbar, wenn man nicht eingeloggt ist */}
+    <>
       {!authed && <Header />}
 
       <div style={{ display: "flex", minHeight: "100vh" }}>
-        {/* Sidebar nur für eingeloggte Nutzer */}
-        {authed && <Sidebar />}
+        {authed && <Sidebar onLogout={handleLogout} />}
 
         <div style={{ flex: 1 }}>
           <Routes>
-            {/* ===================== PUBLIC ROUTES ===================== */}
+            {/* Public */}
             <Route path="/" element={<Home />} />
-            <Route path="/login" element={<Login />} />
+            <Route path="/login" element={<Login onLogin={() => setAuthed(true)} />} />
             <Route path="/register" element={<Register />} />
             <Route path="/forgot" element={<ForgotPassword />} />
             <Route path="/reset" element={<ResetPassword />} />
 
-            {/* ===================== PROTECTED ROUTES ===================== */}
-            {/* 💱 Exchange mit Unterrouten */}
+            {/* Protected */}
             <Route
               path="/exchange"
               element={
@@ -60,7 +72,6 @@ export default function App() {
               <Route path="graph" element={<GraphPage />} />
             </Route>
 
-            {/* 💼 Portfolio-Seite */}
             <Route
               path="/portfolio"
               element={
@@ -70,7 +81,6 @@ export default function App() {
               }
             />
 
-            {/* 💸 Transfer Flow – neue Geld-senden-Seite */}
             <Route
               path="/transfer"
               element={
@@ -80,7 +90,6 @@ export default function App() {
               }
             />
 
-            {/* 👑 Admin Panel (nur für Admins) */}
             <Route
               path="/admin"
               element={
@@ -90,7 +99,6 @@ export default function App() {
               }
             />
 
-            {/* Optional: 404-Fallback */}
             <Route
               path="*"
               element={
@@ -109,6 +117,14 @@ export default function App() {
           </Routes>
         </div>
       </div>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
     </BrowserRouter>
   );
 }

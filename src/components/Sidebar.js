@@ -1,20 +1,45 @@
 import React from "react";
-import { NavLink, useNavigate } from "react-router-dom";
-import { clearToken, getToken, decodeJwt } from "../utils/auth";
+import { NavLink } from "react-router-dom";
+import { getToken, decodeJwt } from "../utils/auth";
 import "../App.css";
+import { useEffect, useState } from "react";
+import { API_URL } from "../utils/config";
 
-export default function Sidebar() {
-    const nav = useNavigate();
+
+export default function Sidebar({ onLogout }) {
     const token = getToken();
+    const [favorites, setFavorites] = useState([]);
+    const [favoritesExpanded, setFavoritesExpanded] = useState(false);
+
+    const fetchFavorites = async () => {
+        try {
+            if (!token) return;
+            const res = await fetch(`${API_URL}/favorites`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (data.success) setFavorites(data.favorites);
+        } catch (err) {
+            console.error("Fehler beim Laden der Favoriten:", err);
+        }
+    };
+
+    useEffect(() => {
+        fetchFavorites();
+
+        // Event Listener für Favoriten-Updates
+        const handleFavoriteUpdate = () => fetchFavorites();
+        window.addEventListener("favorites:updated", handleFavoriteUpdate);
+
+        return () => {
+            window.removeEventListener("favorites:updated", handleFavoriteUpdate);
+        };
+    }, [token]);
+
     if (!token) return null;
 
     const user = decodeJwt(token);
     const username = user?.username || "User";
-
-    const logout = () => {
-        clearToken();
-        nav("/login");
-    };
 
     return (
         <aside className="sidebar">
@@ -43,8 +68,37 @@ export default function Sidebar() {
                 )}
             </nav>
 
+            {/* ⭐ Favoriten-Bereich */}
+            {favorites.length > 0 && (
+                <div className="favorites-section">
+                    <div
+                        className="favorites-header"
+                        onClick={() => setFavoritesExpanded(!favoritesExpanded)}
+                    >
+                        <h4 className="favorites-title">⭐ Favoriten</h4>
+                        <span className={`favorites-arrow ${favoritesExpanded ? 'expanded' : ''}`}>
+                            ▼
+                        </span>
+                    </div>
+
+                    {favoritesExpanded && (
+                        <nav className="sidebar-nav favorites-list">
+                            {favorites.map((fav) => (
+                                <NavLink
+                                    key={fav}
+                                    to={`/exchange/fiat?from=${fav.split('/')[0]}&to=${fav.split('/')[1]}`}
+                                    className="sidebar-link"
+                                >
+                                    💱 <span>{fav}</span>
+                                </NavLink>
+                            ))}
+                        </nav>
+                    )}
+                </div>
+            )}
+
             <div className="sidebar-footer">
-                <button onClick={logout} className="btn logout-btn">
+                <button onClick={onLogout} className="btn logout-btn">
                     Logout
                 </button>
             </div>

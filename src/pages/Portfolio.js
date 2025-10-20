@@ -1,37 +1,37 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
-    Tooltip as RTooltip,
     ResponsiveContainer,
     LineChart,
     Line,
-    XAxis,
-    YAxis,
     PieChart,
     Pie,
     Cell,
+    Tooltip as RTooltip,
+    XAxis,
+    YAxis,
 } from "recharts";
-import "../App.css";
+import { getToken } from "../utils/auth";
 import { API_URL } from "../utils/config";
-import { getToken, decodeJwt } from "../utils/auth";
+import "../App.css";
 
+// ----------------- Hilfsfunktionen -----------------
 const COLORS = ["#60a5fa", "#c084fc", "#34d399", "#fbbf24", "#f87171", "#f472b6", "#22d3ee"];
 
-// ---------- Helpers ----------
-const currency = (n) => (typeof n === "number" ? n.toLocaleString(undefined, { style: "currency", currency: "USD" }) : "—");
-const percent = (n) => (n ?? 0).toFixed(2) + "%";
-
-// Placeholder structure for UI mapping
-const emptyResponse = {
-    totalValue: 0,
-    change24hPct: 0,
-    timeline: { '1D': [], '1W': [], '1M': [], '1Y': [] },
-    holdings: [],
-    transactions: [],
-    balances: [],
+const currency = (n) => {
+    const num = parseFloat(n);
+    return !isNaN(num)
+        ? num.toLocaleString(undefined, { style: "currency", currency: "USD" })
+        : "—";
 };
 
-// ---------- Komponenten ----------
+const percent = (n) => {
+    const num = parseFloat(n);
+    if (isNaN(num)) return "0.00%";
+    return `${num.toFixed(2)}%`;
+};
+
+// ----------------- Komponenten -----------------
 function TimeframeTabs({ value, onChange }) {
     const tabs = ["1D", "1W", "1M", "1Y"];
     return (
@@ -55,40 +55,64 @@ function PortfolioValueChart({ data }) {
             <div className="pf-card-head">
                 <h3>Portfolio-Verlauf</h3>
             </div>
-            <div className="pf-chart">
-                <ResponsiveContainer width="100%" height={260}>
-                    <LineChart data={data}>
-                        <XAxis dataKey="t" hide />
-                        <YAxis hide domain={["dataMin", "dataMax"]} />
-                        <RTooltip
-                            formatter={(v) => currency(v)}
-                            labelFormatter={(l) => `Zeit: ${l}`}
-                            contentStyle={{ background: "#1b1b2b", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8 }}
-                        />
-                        <Line type="monotone" dataKey="v" stroke="#60a5fa" strokeWidth={2} dot={false} />
-                    </LineChart>
-                </ResponsiveContainer>
-            </div>
+            <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={data}>
+                    <XAxis dataKey="t" hide />
+                    <YAxis hide domain={["dataMin", "dataMax"]} />
+                    <RTooltip
+                        formatter={(v) => currency(v)}
+                        labelFormatter={(l) => `Zeit: ${l}`}
+                        contentStyle={{
+                            background: "#1b1b2b",
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            borderRadius: 8,
+                        }}
+                    />
+                    <Line
+                        type="monotone"
+                        dataKey="v"
+                        stroke="#60a5fa"
+                        strokeWidth={2}
+                        dot={false}
+                    />
+                </LineChart>
+            </ResponsiveContainer>
         </div>
     );
 }
 
 function DonutDistribution({ items, total }) {
-    const pieData = items.map((h) => ({ name: h.symbol, value: h.value }));
+    const pieData = items.map((b) => ({
+        name: b.currency || b.symbol,
+        value: parseFloat(b.balance || b.value || 0),
+    }));
+
     return (
         <div className="pf-card">
             <div className="pf-card-head">
-                <h3>Asset-Verteilung</h3>
+                <h3>Gesamt-Verteilung</h3>
             </div>
             <div className="pf-donut">
                 <ResponsiveContainer width="100%" height={260}>
                     <PieChart>
-                        <Pie data={pieData} dataKey="value" innerRadius={70} outerRadius={100} paddingAngle={2}>
-                            {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                        <Pie
+                            data={pieData}
+                            dataKey="value"
+                            innerRadius={70}
+                            outerRadius={100}
+                            paddingAngle={2}
+                        >
+                            {pieData.map((_, i) => (
+                                <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                            ))}
                         </Pie>
                         <RTooltip
                             formatter={(v, n) => [currency(v), n]}
-                            contentStyle={{ background: "#1b1b2b", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8 }}
+                            contentStyle={{
+                                background: "#1b1b2b",
+                                border: "1px solid rgba(255,255,255,0.12)",
+                                borderRadius: 8,
+                            }}
                         />
                     </PieChart>
                 </ResponsiveContainer>
@@ -101,185 +125,279 @@ function DonutDistribution({ items, total }) {
     );
 }
 
-function Sparkline({ data }) {
-    const mapped = data.map((v, i) => ({ t: i, v }));
-    return (
-        <div className="spark">
-            <ResponsiveContainer width="100%" height={40}>
-                <LineChart data={mapped}>
-                    <Line type="monotone" dataKey="v" stroke="#c084fc" strokeWidth={2} dot={false} />
-                </LineChart>
-            </ResponsiveContainer>
-        </div>
-    );
-}
-
-function HoldingsTable({ items }) {
-    const [q, setQ] = useState("");
-    const [sort, setSort] = useState({ key: "value", dir: "desc" });
-
-    const filtered = useMemo(() => {
-        const f = items.filter((h) =>
-            (h.symbol + " " + h.name).toLowerCase().includes(q.toLowerCase())
-        );
-        const s = [...f].sort((a, b) => {
-            const k = sort.key;
-            const av = a[k];
-            const bv = b[k];
-            if (av === bv) return 0;
-            return sort.dir === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
-        });
-        return s;
-    }, [items, q, sort]);
-
-    const togg = (key) => {
-        setSort((prev) => prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" });
-    };
-
+function BalancesTable({ balances }) {
     return (
         <div className="pf-card">
-            <div className="pf-card-head pf-row">
-                <h3>Holdings</h3>
-                <input
-                    className="pf-input"
-                    placeholder="Suchen (BTC, Ether, …)"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                />
+            <div className="pf-card-head">
+                <h3>💰 Fiat-Guthaben</h3>
             </div>
-
             <div className="pf-table">
                 <div className="pf-thead">
-                    <div onClick={() => togg("symbol")}>Asset</div>
-                    <div onClick={() => togg("amount")}>Menge</div>
-                    <div onClick={() => togg("value")}>Wert</div>
-                    <div onClick={() => togg("changePct24h")}>24h</div>
-                    <div>Trend</div>
+                    <div>Währung</div>
+                    <div>Betrag</div>
                 </div>
-
-                {filtered.map((h) => (
-                    <motion.div
-                        key={h.symbol}
-                        className="pf-row pf-trow"
-                        whileHover={{ backgroundColor: "rgba(255,255,255,0.04)" }}
-                    >
-                        <div className="pf-asset">
-                            <div className="pf-asset-symbol">{h.symbol}</div>
-                            <div className="pf-asset-name">{h.name}</div>
+                {balances.length > 0 ? (
+                    balances.map((b, i) => (
+                        <div key={i} className="pf-row pf-trow">
+                            <div>{b.currency}</div>
+                            <div>{currency(b.balance)}</div>
                         </div>
-                        <div>{h.amount} {h.symbol}</div>
-                        <div>{currency(h.value)}</div>
-                        <div className={h.changePct24h >= 0 ? "pos" : "neg"}>
-                            {h.changePct24h >= 0 ? "+" : ""}{percent(h.changePct24h)}
-                        </div>
-                        <Sparkline data={h.spark} />
-                    </motion.div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-function Transactions({ items }) {
-    const [q, setQ] = useState("");
-    const [type, setType] = useState("ALL");
-    const filtered = items.filter((tx) => {
-        const okType = type === "ALL" ? true : tx.type === type;
-        const okQ = (tx.symbol + tx.type + tx.ts).toLowerCase().includes(q.toLowerCase());
-        return okType && okQ;
-    });
-
-    return (
-        <div className="pf-card">
-            <div className="pf-card-head pf-row">
-                <h3>Transaktionen</h3>
-                <div className="pf-row gap">
-                    <select className="pf-input" value={type} onChange={(e) => setType(e.target.value)}>
-                        <option value="ALL">Alle</option>
-                        <option value="BUY">Kauf</option>
-                        <option value="SELL">Verkauf</option>
-                        <option value="DEPOSIT">Einzahlung</option>
-                        <option value="WITHDRAW">Auszahlung</option>
-                    </select>
-                    <input
-                        className="pf-input"
-                        placeholder="Suche (Symbol/Datum/Typ)"
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                    />
-                </div>
-            </div>
-
-            <div className="pf-table">
-                <div className="pf-thead">
-                    <div>Datum</div>
-                    <div>Typ</div>
-                    <div>Symbol</div>
-                    <div>Menge</div>
-                    <div>Preis</div>
-                    <div>Gesamt</div>
-                </div>
-
-                {filtered.map((tx) => (
-                    <div key={tx.id} className="pf-row pf-trow">
-                        <div>{tx.ts}</div>
-                        <div>{tx.type}</div>
-                        <div>{tx.symbol}</div>
-                        <div>{tx.amount}</div>
-                        <div>{currency(tx.price)}</div>
-                        <div>{tx.currency === "USD" ? currency(tx.total) : `${tx.total} ${tx.currency}`}</div>
-                    </div>
-                ))}
-
-                {filtered.length === 0 && (
-                    <div className="pf-empty">Keine Transaktionen gefunden.</div>
+                    ))
+                ) : (
+                    <div className="pf-empty">Keine Guthaben vorhanden.</div>
                 )}
             </div>
         </div>
     );
 }
 
-// ---------- Hauptseite ----------
+function HoldingsTable({ holdings }) {
+    console.log("📊 HoldingsTable received:", holdings);
+    return (
+        <div className="pf-card">
+            <div className="pf-card-head">
+                <h3>📈 Holdings (Assets)</h3>
+            </div>
+            <div className="pf-table">
+                <div className="pf-thead">
+                    <div>Symbol</div>
+                    <div>Menge</div>
+                    <div>Wert (USD)</div>
+                </div>
+                {holdings && holdings.length > 0 ? (
+                    holdings.map((h, i) => (
+                        <div key={i} className="pf-row pf-trow">
+                            <div>{h.symbol || "—"}</div>
+                            <div>{h.amount || "0"}</div>
+                            <div>{currency(h.value_usd)}</div>
+                        </div>
+                    ))
+                ) : (
+                    <div className="pf-empty">Keine Holdings vorhanden.</div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function TransactionsTable({ txs }) {
+    return (
+        <div className="pf-card">
+            <div className="pf-card-head">
+                <h3>📜 Transaktionen</h3>
+            </div>
+            <div className="pf-table">
+                <div className="pf-thead">
+                    <div>Datum</div>
+                    <div>Typ</div>
+                    <div>Symbol</div>
+                    <div>Menge</div>
+                    <div>Gesamt</div>
+                </div>
+                {txs.length > 0 ? (
+                    txs.map((t, i) => (
+                        <div key={i} className="pf-row pf-trow">
+                            <div>{new Date(t.ts).toLocaleString()}</div>
+                            <div>{t.type}</div>
+                            <div>{t.symbol}</div>
+                            <div>{t.amount}</div>
+                            <div>{currency(t.total)}</div>
+                        </div>
+                    ))
+                ) : (
+                    <div className="pf-empty">Keine Transaktionen vorhanden.</div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ----------------- Hauptseite -----------------
+// Transfer-Komponente mit Username-Suche
+function TransferForm({ balances }) {
+    const [username, setUsername] = useState("");
+    const [searchResults, setSearchResults] = useState([]);
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [currency, setCurrency] = useState("");
+    const [amount, setAmount] = useState("");
+    const [searching, setSearching] = useState(false);
+
+    // Debounced search
+    useEffect(() => {
+        if (username.length < 2) {
+            setSearchResults([]);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            setSearching(true);
+            try {
+                const token = getToken();
+                const res = await fetch(`${API_URL}/users/search?q=${encodeURIComponent(username)}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const json = await res.json();
+                if (json.success) {
+                    setSearchResults(json.users || []);
+                }
+            } catch (err) {
+                console.error("Suche fehlgeschlagen:", err);
+            } finally {
+                setSearching(false);
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [username]);
+
+    const handleSelectUser = (user) => {
+        setSelectedUser(user);
+        setUsername(user.username);
+        setSearchResults([]);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        if (!selectedUser || !currency || !amount) {
+            alert("Bitte alle Felder ausfüllen.");
+            return;
+        }
+
+        try {
+            const token = getToken();
+            const res = await fetch(`${API_URL}/transfer`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    toUsername: selectedUser.username,
+                    currency,
+                    amount: parseFloat(amount)
+                }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                alert(`✅ ${amount} ${currency} erfolgreich an ${selectedUser.username} gesendet!`);
+                setUsername("");
+                setSelectedUser(null);
+                setCurrency("");
+                setAmount("");
+                window.location.reload();
+            } else {
+                alert("❌ " + (json.message || "Fehler beim Senden."));
+            }
+        } catch (err) {
+            alert("❌ Serverfehler: " + err.message);
+        }
+    };
+
+    return (
+        <div className="pf-card">
+            <div className="pf-card-head">
+                <h3>💸 Geld senden</h3>
+            </div>
+            <form onSubmit={handleSubmit} className="transfer-form-business">
+                <div className="transfer-row">
+                    <div className="transfer-field" style={{ position: "relative" }}>
+                        <label>Empfänger (Username)</label>
+                        <input
+                            type="text"
+                            value={username}
+                            onChange={(e) => {
+                                setUsername(e.target.value);
+                                setSelectedUser(null);
+                            }}
+                            placeholder="Username eingeben..."
+                            autoComplete="off"
+                        />
+                        {searching && <div className="search-loading">Suche...</div>}
+                        {searchResults.length > 0 && (
+                            <div className="user-dropdown">
+                                {searchResults.map((user) => (
+                                    <div
+                                        key={user.id}
+                                        className="user-dropdown-item"
+                                        onClick={() => handleSelectUser(user)}
+                                    >
+                                        👤 {user.username}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {selectedUser && (
+                            <div className="selected-user">
+                                ✓ Ausgewählt: <strong>{selectedUser.username}</strong>
+                            </div>
+                        )}
+                    </div>
+                    <div className="transfer-field">
+                        <label>Währung</label>
+                        <select
+                            value={currency}
+                            onChange={(e) => setCurrency(e.target.value)}
+                        >
+                            <option value="">Wählen...</option>
+                            {(balances || []).map((b) => (
+                                <option key={b.currency} value={b.currency}>
+                                    {b.currency} (Verfügbar: {b.balance})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="transfer-field">
+                        <label>Betrag</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value)}
+                            placeholder="0.00"
+                        />
+                    </div>
+                    <button type="submit" className="btn btn-gradient">
+                        Senden
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+
 export default function Portfolio() {
     const [data, setData] = useState(null);
     const [tf, setTf] = useState("1W");
-    const user = decodeJwt(getToken());
 
     useEffect(() => {
-        let isMounted = true;
-        (async () => {
+        const loadPortfolio = async () => {
             try {
                 const token = getToken();
                 const res = await fetch(`${API_URL}/portfolio`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 const json = await res.json();
-                if (isMounted && json && json.success) {
-                    // Map backend response to expected UI structure
-                    const ui = {
-                        totalValue: json.totalValue || 0,
-                        change24hPct: json.change24hPct || 0,
-                        timeline: json.timeline || emptyResponse.timeline,
-                        holdings: (json.holdings || []).map(h => ({ symbol: h.symbol, name: h.symbol, amount: parseFloat(h.amount), value: parseFloat(h.value_usd || 0), changePct24h: 0, spark: [] })),
-                        transactions: (json.transactions || []).map(t => ({ id: t.id, ts: t.ts, type: t.type, symbol: t.symbol, amount: parseFloat(t.amount || 0), price: parseFloat(t.price || 0), total: parseFloat(t.total || 0), currency: t.currency })),
-                        balances: json.balances || [],
-                    };
-                    setData(ui);
+                console.log("📊 Portfolio API Response:", json);
+                console.log("📊 Holdings:", json.holdings);
+                console.log("📊 Balances:", json.balances);
+                if (json && json.success) {
+                    setData(json);
                 } else {
-                    setData(emptyResponse);
+                    console.warn("Fehler beim Laden:", json.message);
                 }
             } catch (e) {
-                console.warn('Failed to load portfolio', e.message);
-                setData(emptyResponse);
+                console.error("Fehler:", e.message);
             }
-        })();
-        return () => { isMounted = false; };
+        };
+        loadPortfolio();
     }, []);
 
     if (!data) return <div className="loadingMessage">Portfolio wird geladen…</div>;
 
-    const currentSeries = data.timeline[tf] || [];
-    const positive = data.change24hPct >= 0;
+    const totalValue = parseFloat(data.totalValue || 0);
+    const positive = totalValue >= 0;
 
     return (
         <motion.div
@@ -288,10 +406,11 @@ export default function Portfolio() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45 }}
         >
+            {/* HEADER */}
             <div className="pf-header">
                 <div>
                     <h2 className="pf-title">💼 Portfolio</h2>
-                    <div className="pf-sub">Gesamtwert & Performance</div>
+                    <div className="pf-sub">Gesamtübersicht deines Accounts</div>
                 </div>
                 <div className="pf-kpis">
                     <div className="kpi">
@@ -300,105 +419,41 @@ export default function Portfolio() {
                     </div>
                     <div className={`kpi change ${positive ? "pos" : "neg"}`}>
                         <div className="kpi-label">24h</div>
-                        <div className="kpi-value">{positive ? "▲" : "▼"} {percent(data.change24hPct)}</div>
+                        <div className="kpi-value">
+                            {positive ? "▲" : "▼"} {percent(data.change24hPct)}
+                        </div>
                     </div>
                 </div>
             </div>
 
+            {/* CHART + DONUT */}
             <div className="pf-grid">
                 <div className="pf-card stack">
                     <div className="pf-card-head pf-row">
                         <h3>Überblick</h3>
                         <TimeframeTabs value={tf} onChange={setTf} />
                     </div>
-                    <PortfolioValueChart data={currentSeries} />
+                    <PortfolioValueChart data={data.timeline[tf] || []} />
                 </div>
 
-                <DonutDistribution items={data.holdings} total={data.totalValue} />
+                <DonutDistribution items={data.balances} total={data.totalValue} />
             </div>
 
+            {/* BALANCES + HOLDINGS */}
             <div className="pf-grid">
-                <HoldingsTable items={data.holdings} />
+                <BalancesTable balances={data.balances || []} />
+                <HoldingsTable holdings={data.holdings || []} />
             </div>
 
+            {/* TRANSAKTIONEN */}
             <div className="pf-grid">
-                <Transactions items={data.transactions} />
+                <TransactionsTable txs={data.transactions} />
             </div>
 
-            {/* Geld senden Bereich */}
+            {/* GELD SENDEN */}
             <div className="pf-grid">
-                <div className="pf-card">
-                    <div className="pf-card-head">
-                        <h3>💸 Geld senden</h3>
-                    </div>
-                    <form
-                        onSubmit={async (e) => {
-                            e.preventDefault();
-                            const form = e.target;
-                            const toUserId = form.toUserId.value;
-                            const currency = form.currency.value;
-                            const amount = parseFloat(form.amount.value);
-
-                            if (!toUserId || !currency || !amount) {
-                                alert("Bitte alle Felder ausfüllen.");
-                                return;
-                            }
-
-                            try {
-                                const token = getToken();
-                                const res = await fetch(`${API_URL}/transfer`, {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                    body: JSON.stringify({ toUserId: Number(toUserId), currency, amount }),
-                                });
-                                const data = await res.json();
-                                if (data.success) {
-                                    alert("✅ Transfer erfolgreich!");
-                                    form.reset();
-                                    // refresh
-                                    const evt = new Event('portfolio:refresh');
-                                    window.dispatchEvent(evt);
-                                } else {
-                                    alert("❌ " + (data.message || "Fehler beim Senden."));
-                                }
-                            } catch (err) {
-                                console.warn(err);
-                                alert("❌ Serverfehler beim Senden.");
-                            }
-                        }}
-                        className="transfer-form-business"
-                    >
-                        <div className="transfer-row">
-                            <div className="transfer-field">
-                                <label>Empfänger-ID</label>
-                                <input name="toUserId" type="number" placeholder="z. B. 2" />
-                            </div>
-                            <div className="transfer-field">
-                                <label>Währung</label>
-                                <select name="currency">
-                                    {(data.balances || []).map((h) => (
-                                        <option key={h.currency} value={h.currency}>{h.currency}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="transfer-field">
-                                <label>Betrag</label>
-                                <input name="amount" type="number" step="0.01" min="0" placeholder="0.00" />
-                            </div>
-                            <button type="submit" className="btn btn-gradient">Senden</button>
-                        </div>
-                    </form>
-                </div>
+                <TransferForm balances={data.balances} />
             </div>
-
-            <div className="portfolio-footer">Letzte Aktualisierung: {new Date().toLocaleTimeString()}</div>
         </motion.div>
     );
 }
-
-// Add event listener to refresh portfolio from other actions
-window.addEventListener('portfolio:refresh', () => {
-    // simple approach: reload the page data by triggering a custom event consumers can hook
-    // in this file we used useEffect without listener; to keep it simple, ask user to refresh page
-    console.log('portfolio:refresh received - please refresh the page to see updates');
-});
