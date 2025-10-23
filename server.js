@@ -1,5 +1,5 @@
 // ============================
-// 💱 Coinflip REST Backend (mit Portfolio & Transfer)
+// 💱 Coinflip REST Backend (mit Portfolio & Transfer & CryptoExchange)
 // ============================
 require("dotenv").config();
 const express = require("express");
@@ -8,6 +8,8 @@ const mysql = require("mysql2/promise");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const cron = require("node-cron");
+const path = require("path");
+const fs = require("fs");
 
 // ✅ node-fetch Setup (funktioniert in Node 16–22)
 let fetch;
@@ -43,6 +45,106 @@ const db = mysql.createPool({
         console.error("❌ DB-Verbindung fehlgeschlagen:", err.message);
     }
 })();
+
+// ==========================================================
+// ₿ Crypto Exchange Daten (CoinGecko API Integration)
+// ==========================================================
+const COINS = ["bitcoin", "ethereum", "ripple", "dogecoin", "solana", "cardano"];
+const COIN_SYMBOLS = {
+    bitcoin: "BTC",
+    ethereum: "ETH",
+    ripple: "XRP",
+    dogecoin: "DOGE",
+    solana: "SOL",
+    cardano: "ADA",
+};
+
+// Hole Daten von CoinGecko und aktualisiere die DB
+async function updateCryptoExchangeData() {
+    try {
+        console.log("🔄 Lade Krypto-Kurse von CoinGecko...");
+        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${COINS.join(",")}&vs_currencies=usd`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        const conn = await db.getConnection();
+        for (const [coin, info] of Object.entries(data)) {
+            const symbol = COIN_SYMBOLS[coin] || coin.toUpperCase();
+            await conn.query(
+                `
+                INSERT INTO crypto_exchange (symbol, price_usd)
+                VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE
+                    price_usd = VALUES(price_usd),
+                    last_updated = CURRENT_TIMESTAMP
+                `,
+                [symbol, info.usd]
+            );
+        }
+        conn.release();
+        console.log("✅ Crypto-Kurse aktualisiert!");
+    } catch (err) {
+        console.error("❌ Fehler beim Aktualisieren der Crypto-Daten:", err.message);
+    }
+}
+
+// Beim Start sofort laden + alle 10 Minuten automatisch
+updateCryptoExchangeData();
+cron.schedule("*/10 * * * *", updateCryptoExchangeData);
+
+// ==========================================================
+// 🔹 API-Routen für CryptoExchange.js
+// ==========================================================
+
+// 1️⃣ Liste der verfügbaren Krypto-Währungen
+app.get("/api/crypto/currencies", async (req, res) => {
+    try {
+        const [rows] = await db.query("SELECT symbol AS currency FROM crypto_exchange ORDER BY symbol ASC");
+        const currencies = rows.map((r) => r.currency);
+        res.json({ success: true, currencies });
+    } catch (err) {
+        console.error("❌ Fehler /api/crypto/currencies:", err.message);
+        res.status(500).json({ success: false, message: "Fehler beim Laden der Krypto-Währungen." });
+    }
+});
+
+// 2️⃣ Umrechnung zwischen Krypto-Währungen
+app.get("/api/crypto/convert", async (req, res) => {
+    try {
+        const { from, to, amount } = req.query;
+        if (!from || !to || !amount)
+            return res.status(400).json({ success: false, message: "Parameter fehlen." });
+
+        const [rows] = await db.query(
+            "SELECT symbol, price_usd FROM crypto_exchange WHERE symbol IN (?, ?)",
+            [from, to]
+        );
+
+        if (rows.length < 2)
+            return res.status(404).json({ success: false, message: "Währung nicht gefunden." });
+
+        const fromPrice = rows.find(r => r.symbol === from)?.price_usd;
+        const toPrice = rows.find(r => r.symbol === to)?.price_usd;
+
+        if (!fromPrice || !toPrice)
+            return res.status(404).json({ success: false, message: "Preis fehlt." });
+
+        const rate = (fromPrice / toPrice).toFixed(8);
+        const result = (parseFloat(amount) * rate).toFixed(8);
+
+        res.json({
+            success: true,
+            from,
+            to,
+            rate,
+            amount: parseFloat(amount),
+            result: parseFloat(result),
+        });
+    } catch (err) {
+        console.error("❌ Fehler /api/crypto/convert:", err.message);
+        res.status(500).json({ success: false, message: "Fehler bei der Umrechnung." });
+    }
+});
 
 // ==========================================================
 // 📊 1. Hole alle verfügbaren Währungen
@@ -514,6 +616,84 @@ app.put("/api/users/:id", verifyToken, requireAdmin, async (req, res) => {
     }
 });
 
+// ==========================================================
+// 🛡️ Middleware: authenticateToken (für normale User)
+// ==========================================================
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers["authorization"];
+
+    if (!authHeader) {
+        return res.status(401).json({ success: false, message: "Kein Token angegeben" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    jwt.verify(token, process.env.JWT_SECRET || "devsecret", (err, user) => {
+        if (err) {
+            console.error("❌ JWT verify error:", err.message);
+            return res.status(403).json({ success: false, message: "Ungültiger Token" });
+        }
+
+        // Nutzerinfos aus dem Token an die Anfrage hängen
+        req.user = user;
+        next();
+    });
+}
+
+
+app.get("/api/exchange/currencies", async (req, res) => {
+    try {
+        const [rows] = await db.query(`
+            SELECT DISTINCT base_currency AS currency FROM exchange_rates
+            UNION
+            SELECT DISTINCT target_currency AS currency FROM exchange_rates
+            ORDER BY currency ASC
+        `);
+
+        let currencies = rows.map((r) => r.currency);
+        // 👉 Fallback
+        if (currencies.length === 0) {
+            currencies = ["USD", "EUR", "BTC", "ETH", "CHF"];
+        }
+
+        res.json({ success: true, currencies });
+    } catch (err) {
+        console.error("❌ Fehler in /api/exchange/currencies:", err);
+        res.status(500).json({ success: false, message: "Fehler beim Laden der Währungen." });
+    }
+});
+
+
+
+// BUY
+app.post("/buy", authenticateToken, async (req, res) => {
+    const { currency, amount } = req.body;
+    const userId = req.user.id;
+    if (!currency || !amount) return res.json({ success: false, message: "Fehlende Felder" });
+
+    await db.query("INSERT INTO orders (user_id, type, currency, amount, status) VALUES (?, 'BUY', ?, ?, 'completed')", [userId, currency, amount]);
+    await db.query("UPDATE balances SET balance = balance + ? WHERE user_id = ? AND currency = ?", [amount, userId, currency]);
+    res.json({ success: true });
+});
+
+// SELL
+app.post("/sell", authenticateToken, async (req, res) => {
+    const { currency, amount } = req.body;
+    const userId = req.user.id;
+    const [rows] = await db.query("SELECT balance FROM balances WHERE user_id=? AND currency=?", [userId, currency]);
+    if (!rows.length || rows[0].balance < amount)
+        return res.json({ success: false, message: "Nicht genug Guthaben" });
+
+    await db.query("INSERT INTO orders (user_id, type, currency, amount, status) VALUES (?, 'SELL', ?, ?, 'completed')", [userId, currency, amount]);
+    await db.query("UPDATE balances SET balance = balance - ? WHERE user_id = ? AND currency = ?", [amount, userId, currency]);
+    res.json({ success: true });
+});
+
+// ORDERS LIST
+app.get("/orders", authenticateToken, async (req, res) => {
+    const userId = req.user.id;
+    const [rows] = await db.query("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC", [userId]);
+    res.json({ success: true, orders: rows });
+});
 
 
 // ==========================================================
@@ -521,6 +701,21 @@ app.put("/api/users/:id", verifyToken, requireAdmin, async (req, res) => {
 // ==========================================================
 const PORT = process.env.PORT || 5000;
 const HOST = "0.0.0.0";
+
+// Wenn ein React build/ Verzeichnis existiert, statische Dateien ausliefern
+const buildPath = path.join(__dirname, 'build');
+if (fs.existsSync(buildPath)) {
+    app.use(express.static(buildPath));
+
+    // Alle Nicht-API GET-Anfragen an index.html weiterleiten (SPA routing)
+    app.get('*', (req, res, next) => {
+        if (req.method !== 'GET') return next();
+        if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path.startsWith('/static')) return next();
+        res.sendFile(path.join(buildPath, 'index.html'));
+    });
+
+    console.log('🔸 Serving React build from', buildPath);
+}
 app.listen(PORT, HOST, () => {
     console.log(`🚀 Server läuft auf http://${HOST}:${PORT}`);
 });

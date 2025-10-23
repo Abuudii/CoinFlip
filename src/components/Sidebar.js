@@ -83,15 +83,23 @@ export default function Sidebar({ onLogout }) {
 
                     {favoritesExpanded && (
                         <nav className="sidebar-nav favorites-list">
-                            {favorites.map((fav) => (
-                                <NavLink
-                                    key={fav}
-                                    to={`/exchange/fiat?from=${fav.split('/')[0]}&to=${fav.split('/')[1]}`}
-                                    className="sidebar-link"
-                                >
-                                    💱 <span>{fav}</span>
-                                </NavLink>
-                            ))}
+                            {favorites.map((fav) => {
+                                const parts = fav.split('/');
+                                const from = parts[0];
+                                const to = parts[1];
+                                const cryptoSet = new Set(["BTC", "ETH", "XRP", "LTC", "BCH", "ADA", "DOT", "DOGE"]);
+                                const isCryptoPair = cryptoSet.has(from) || cryptoSet.has(to);
+                                const toPath = isCryptoPair ? '/exchange/crypto' : '/exchange/fiat';
+                                return (
+                                    <NavLink
+                                        key={fav}
+                                        to={`${toPath}?from=${from}&to=${to}`}
+                                        className="sidebar-link"
+                                    >
+                                        💱 <span>{fav}</span>
+                                    </NavLink>
+                                );
+                            })}
                         </nav>
                     )}
                 </div>

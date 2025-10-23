@@ -8,6 +8,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 // 🔹 Seiten
 import Home from "./pages/Home";
+import HowItWorks from "./pages/HowItWorks";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -19,6 +20,12 @@ import GraphPage from "./pages/GraphPage";
 import AdminPanel from "./pages/AdminPanel";
 import Portfolio from "./pages/Portfolio";
 import TransferFlow from "./pages/TransferFlow";
+import Support from "./pages/Support";
+
+// 🔹 Neue Seiten
+import BuyPage from "./pages/BuyPage";
+import SellPage from "./pages/SellPage";
+import OrdersPage from "./pages/OrdersPage";
 
 // 🔹 Utils
 import { getToken, clearToken } from "./utils/auth";
@@ -53,12 +60,14 @@ function AppContent() {
           <Routes>
             {/* Public */}
             <Route path="/" element={<Home />} />
+            <Route path="/how-it-works" element={<HowItWorks />} />
+            <Route path="/support" element={<Support />} />
             <Route path="/login" element={<Login onLogin={() => setAuthed(true)} />} />
             <Route path="/register" element={<Register />} />
             <Route path="/forgot" element={<ForgotPassword />} />
             <Route path="/reset" element={<ResetPassword />} />
 
-            {/* Protected */}
+            {/* Exchange Layout */}
             <Route
               path="/exchange"
               element={
@@ -72,6 +81,7 @@ function AppContent() {
               <Route path="graph" element={<GraphPage />} />
             </Route>
 
+            {/* Portfolio */}
             <Route
               path="/portfolio"
               element={
@@ -81,6 +91,33 @@ function AppContent() {
               }
             />
 
+            {/* 💸 Neue Routen */}
+            <Route
+              path="/buy"
+              element={
+                <ProtectedRoute>
+                  <BuyPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sell"
+              element={
+                <ProtectedRoute>
+                  <SellPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/orders"
+              element={
+                <ProtectedRoute>
+                  <OrdersPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Transfer */}
             <Route
               path="/transfer"
               element={
@@ -90,6 +127,7 @@ function AppContent() {
               }
             />
 
+            {/* Admin */}
             <Route
               path="/admin"
               element={
@@ -99,6 +137,7 @@ function AppContent() {
               }
             />
 
+            {/* 404 */}
             <Route
               path="*"
               element={

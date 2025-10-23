@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { API_URL } from '../utils/config';
 import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -32,13 +33,55 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
             try {
                 setLoading(true);
 
-                // ✅ Sonderfall für Krypto (CoinGecko bleibt gleich)
-                if (fromCurrency === 'BTC') {
+                // Mappe bekannte Symbole zu CoinGecko IDs
+                const cryptoMap = {
+                    BTC: 'bitcoin',
+                    ETH: 'ethereum',
+                    XRP: 'ripple',
+                    LTC: 'litecoin',
+                    BCH: 'bitcoin-cash',
+                    ADA: 'cardano',
+                    DOT: 'polkadot',
+                    DOGE: 'dogecoin'
+                };
+
+                const isCrypto = (s) => !!s && cryptoMap[s];
+
+                // Beide sind Krypto -> hole beide in USD und bilde Ratio
+                if (isCrypto(fromCurrency) && isCrypto(toCurrency)) {
+                    const fromId = cryptoMap[fromCurrency];
+                    const toId = cryptoMap[toCurrency];
+
+                    const [resA, resB] = await Promise.all([
+                        fetch(`https://api.coingecko.com/api/v3/coins/${fromId}/market_chart?vs_currency=usd&days=30&interval=daily`),
+                        fetch(`https://api.coingecko.com/api/v3/coins/${toId}/market_chart?vs_currency=usd&days=30&interval=daily`)
+                    ]);
+
+                    const [dataA, dataB] = await Promise.all([resA.json(), resB.json()]);
+
+                    if (dataA.prices && dataB.prices) {
+                        // Beide arrays sollten gleiche timestamps haben (täglich)
+                        const labels = dataA.prices.map(p => new Date(p[0]).toLocaleDateString());
+                        const values = dataA.prices.map((p, i) => {
+                            const a = p[1];
+                            const b = (dataB.prices[i] && dataB.prices[i][1]) || NaN;
+                            return b ? a / b : NaN;
+                        }).filter(v => !isNaN(v));
+
+                        setHistoricalData({ labels, values });
+                        setLoading(false);
+                        return;
+                    }
+                }
+
+                // from Crypto -> to Fiat (e.g., BTC -> USD) : CoinGecko supports vs_currency
+                if (isCrypto(fromCurrency) && !isCrypto(toCurrency)) {
+                    const fromId = cryptoMap[fromCurrency];
+                    const vs = toCurrency.toLowerCase();
                     const response = await fetch(
-                        `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=${toCurrency.toLowerCase()}&days=30&interval=daily`
+                        `https://api.coingecko.com/api/v3/coins/${fromId}/market_chart?vs_currency=${vs}&days=30&interval=daily`
                     );
                     const data = await response.json();
-
                     if (data.prices) {
                         const chartData = {
                             labels: data.prices.map(p => new Date(p[0]).toLocaleDateString()),
@@ -50,14 +93,35 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
                     }
                 }
 
-                // ✅ Für FIAT jetzt nur über deinen Server (kein direkter apilayer-Call)
+                // to Crypto & from Fiat -> invert (e.g., USD -> BTC) : fetch coin vs fiat and invert
+                if (!isCrypto(fromCurrency) && isCrypto(toCurrency)) {
+                    const toId = cryptoMap[toCurrency];
+                    const vs = fromCurrency.toLowerCase();
+                    const response = await fetch(
+                        `https://api.coingecko.com/api/v3/coins/${toId}/market_chart?vs_currency=${vs}&days=30&interval=daily`
+                    );
+                    const data = await response.json();
+                    if (data.prices) {
+                        // invert prices: 1 fiat -> X crypto => we want fiat -> crypto rate, so take 1/price
+                        const labels = data.prices.map(p => new Date(p[0]).toLocaleDateString());
+                        const values = data.prices.map(p => {
+                            const v = p[1];
+                            return v ? 1 / v : NaN;
+                        }).filter(v => !isNaN(v));
+                        setHistoricalData({ labels, values });
+                        setLoading(false);
+                        return;
+                    }
+                }
+
+                // Fallback: FIAT oder unbekannte Kombination -> Backend timeseries
                 const end = new Date().toISOString().split('T')[0];
                 const startDate = new Date();
                 startDate.setDate(startDate.getDate() - 30);
                 const start = startDate.toISOString().split('T')[0];
 
                 const response = await fetch(
-                    `http://localhost:5000/api/timeseries?base=${fromCurrency}&symbol=${toCurrency}&start=${start}&end=${end}`
+                    `${API_URL}/timeseries?base=${fromCurrency}&symbol=${toCurrency}&start=${start}&end=${end}`
                 );
                 const data = await response.json();
 
@@ -65,15 +129,12 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
 
                 let ratesData = [];
 
-                // Backend may return rows from DB (array) or the external API shape (object keyed by date)
                 if (Array.isArray(data.rates)) {
-                    // Rows from DB: [{ rate_date, rate_value }, ...]
                     ratesData = data.rates.map(r => ({
                         date: new Date(r.rate_date).toLocaleDateString(),
                         rate: parseFloat(r.rate_value)
                     }));
                 } else if (data.rates && typeof data.rates === 'object') {
-                    // External API shape: { '2023-10-01': { USD: 1.12 } }
                     ratesData = Object.entries(data.rates).map(([date, val]) => ({
                         date: new Date(date).toLocaleDateString(),
                         rate: parseFloat(val && val[toCurrency])
@@ -82,7 +143,6 @@ const CurrencyGraph = ({ fromCurrency, toCurrency }) => {
 
                 if (ratesData.length === 0) throw new Error('No exchange rate data available');
 
-                // Sortieren (älteste → neueste)
                 const sortedData = ratesData.sort((a, b) => new Date(a.date) - new Date(b.date));
                 setHistoricalData({
                     labels: sortedData.map(d => d.date),

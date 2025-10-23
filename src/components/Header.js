@@ -22,7 +22,6 @@ export default function Header() {
                     <Link to="/" className="nav-link">Home</Link>
                     <Link to="/how-it-works" className="nav-link">How it Works</Link>
                     <Link to="/exchange" className="nav-link">Exchange</Link>
-                    <Link to="/leaderboard" className="nav-link">Leaderboard</Link>
                     <Link to="/support" className="nav-link">Support</Link>
                 </nav>
 
@@ -45,7 +44,6 @@ export default function Header() {
                     <Link to="/" className="nav-link" onClick={closeMenu}>Home</Link>
                     <Link to="/how-it-works" className="nav-link" onClick={closeMenu}>How it Works</Link>
                     <Link to="/exchange" className="nav-link" onClick={closeMenu}>Exchange</Link>
-                    <Link to="/leaderboard" className="nav-link" onClick={closeMenu}>Leaderboard</Link>
                     <Link to="/support" className="nav-link" onClick={closeMenu}>Support</Link>
                     {!authed && <Link to="/login" className="nav-link btn-outlined" onClick={closeMenu}>Login</Link>}
                     {!authed && <Link to="/register" className="nav-link btn-gradient" onClick={closeMenu}>Registrieren</Link>}
